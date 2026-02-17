@@ -23,10 +23,10 @@ def list_devices():
     """List currently connected usb devices with indexes."""
     table = Table(title="Connected USB Devices (Interactive Mode)")
     table.add_column("Index", style="bold cyan", justify="right")
-    table.add_column("Device", style="bold default", overflow="fold")
-    table.add_column("VID:PID", style="magenta")
+    table.add_column("Device", style="bold white", overflow="fold")
+    table.add_column("VID:PID", style="blue")
     table.add_column("State", style="bold")
-    table.add_column("Path/ID", style="dim", overflow="fold")
+    table.add_column("Path/ID", style="white", overflow="fold")
 
     devices = []
     
@@ -223,7 +223,7 @@ def main():
                                                        |___/ [/bold cyan]
 """
     console.print(banner)
-    console.print("[dim]Use this terminal to block/unblock existing devices.[/dim]")
+    console.print("[italic]Use this terminal to block/unblock existing devices.[/italic]")
     
     # PID File Handling
     from .core.logger import log_file_path
@@ -265,7 +265,7 @@ def main():
             if not devices:
                 continue
             
-            console.print("[dim]Enter '0' or 'b' to go back to menu[/dim]")
+            console.print("[italic]Enter '0' or 'b' to go back to menu[/italic]")
             val = Prompt.ask("Enter Index to BLOCK", show_default=False)
             if val in ('0', 'b', 'B'):
                 continue
@@ -285,7 +285,7 @@ def main():
             if not devices:
                 continue
             
-            console.print("[dim]Enter '0' or 'b' to go back to menu[/dim]")
+            console.print("[italic]Enter '0' or 'b' to go back to menu[/italic]")
             val = Prompt.ask("Enter Index to UNBLOCK", show_default=False)
             if val in ('0', 'b', 'B'):
                 continue

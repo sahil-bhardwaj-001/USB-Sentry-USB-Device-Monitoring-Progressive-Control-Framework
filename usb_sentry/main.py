@@ -372,19 +372,20 @@ def start(
                 # GNOME Terminal specific
                 if "gnome-terminal" in term:
                     proc = subprocess.Popen([
-                        term, "--geometry=130x40", "--", "bash", "-c", f"{cli_cmd}"
+                        term, "--geometry=100x30", "--", "bash", "-c", f"{cli_cmd}"
                     ], start_new_session=True)
                 
-                # Konsole specific
+                # Konsole specific (try to set size via profile arguments if possible, or geometry if supported)
                 elif "konsole" in term:
+                     # Konsole often ignores -geometry, but we can try --geometry or -p
                      proc = subprocess.Popen([
-                        term, "-e", "bash", "-c", f"{cli_cmd}"
+                        term, "-p", "TerminalColumns=100", "-p", "TerminalRows=30", "-e", "bash", "-c", f"{cli_cmd}"
                     ], start_new_session=True)
 
                 # XFCE4 Terminal specific
                 elif "xfce4-terminal" in term:
                      proc = subprocess.Popen([
-                        term, "--geometry=130x40", "-e", f"bash -c '{cli_cmd}'"
+                        term, "--geometry=100x30", "-e", f"bash -c '{cli_cmd}'"
                     ], start_new_session=True)
 
                 # QTerminal specific
@@ -399,10 +400,10 @@ def start(
                         term, "-x", f"bash -c '{cli_cmd}'"
                     ], start_new_session=True)
 
-                # Standard xterm / x-terminal-emulator (usually supports -e)
+                # Standard xterm / x-terminal-emulator (usually supports -geometry)
                 else:
                     proc = subprocess.Popen([
-                        term, "-geometry", "130x40", "-e", f"bash -c '{cli_cmd}'"
+                        term, "-geometry", "100x30", "-e", f"bash -c '{cli_cmd}'"
                     ], start_new_session=True)
                 
                 console.print(f"[green]Launched Interactive CLI ({term}).[/green]")
@@ -442,10 +443,9 @@ def start(
     maintenance_thread.start()
 
     # Main Command Loop
-    console.print("\n[bold cyan]Main Terminal Active. Type 'r' to RE-LAUNCH Interactive CLI or 'q' to QUIT.[/bold cyan]")
-    
     try:
         while True:
+            console.print("\n[bold cyan]Main Terminal Active. Type 'r' to RE-LAUNCH Interactive CLI or 'q' to QUIT.[/bold cyan]")
             # Simple input loop
             cmd = input().strip().lower()
             if cmd in ('r', 'relaunch'):
