@@ -1,0 +1,11 @@
+app:
+  name: "USB Sentry"
+  version: "1.0.0"
+
+interactive:
+  geometry: "100x30"
+  theme: "default"
+
+logging:
+  level: "INFO"
+  console_output: true
