@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
 from .core.logger import logger, log_file_path
+from .core.config import config
 from .core.policy import PolicyEngine, PolicyAction, TrustState
 from .core.events import USBEvent, DeviceAction, DeviceType
 from .file_audit.watcher import FileAuditor
@@ -371,21 +372,29 @@ def start(
                 
                 # GNOME Terminal specific
                 if "gnome-terminal" in term:
+                    geom = config['interactive']['geometry']
                     proc = subprocess.Popen([
-                        term, "--geometry=100x30", "--", "bash", "-c", f"{cli_cmd}"
+                        term, f"--geometry={geom}", "--", "bash", "-c", f"{cli_cmd}"
                     ], start_new_session=True)
                 
                 # Konsole specific (try to set size via profile arguments if possible, or geometry if supported)
                 elif "konsole" in term:
+                     # Parse geometry 100x30 -> cols, rows
+                     try:
+                         cols, rows = config['interactive']['geometry'].lower().split('x')
+                     except:
+                         cols, rows = "100", "30"
+                     
                      # Konsole often ignores -geometry, but we can try --geometry or -p
                      proc = subprocess.Popen([
-                        term, "-p", "TerminalColumns=100", "-p", "TerminalRows=30", "-e", "bash", "-c", f"{cli_cmd}"
+                        term, "-p", f"TerminalColumns={cols}", "-p", f"TerminalRows={rows}", "-e", "bash", "-c", f"{cli_cmd}"
                     ], start_new_session=True)
 
                 # XFCE4 Terminal specific
                 elif "xfce4-terminal" in term:
+                     geom = config['interactive']['geometry']
                      proc = subprocess.Popen([
-                        term, "--geometry=100x30", "-e", f"bash -c '{cli_cmd}'"
+                        term, f"--geometry={geom}", "-e", f"bash -c '{cli_cmd}'"
                     ], start_new_session=True)
 
                 # QTerminal specific
@@ -402,8 +411,9 @@ def start(
 
                 # Standard xterm / x-terminal-emulator (usually supports -geometry)
                 else:
+                    geom = config['interactive']['geometry']
                     proc = subprocess.Popen([
-                        term, "-geometry", "100x30", "-e", f"bash -c '{cli_cmd}'"
+                        term, "-geometry", geom, "-e", f"bash -c '{cli_cmd}'"
                     ], start_new_session=True)
                 
                 console.print(f"[green]Launched Interactive CLI ({term}).[/green]")

@@ -8,6 +8,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt, IntPrompt
 import time
+import json
+from collections import deque
 
 # Conditional imports
 if sys.platform == 'linux':
@@ -212,6 +214,50 @@ def restore_all():
             except:
                 pass
 
+def view_logs(lines=20):
+    """View recent logs."""
+    from .core.logger import log_file_path
+    
+    if not log_file_path.exists():
+        console.print("[red]Log file not found.[/red]")
+        return
+
+    try:
+        # Read last N lines
+        with open(log_file_path, 'r') as f:
+            # simple tail implementation
+            q = deque(f, maxlen=lines)
+            
+        table = Table(title=f"Recent Logs (Last {lines})")
+        table.add_column("Time", style="cyan")
+        table.add_column("Level", style="bold")
+        table.add_column("Message", style="white")
+        
+        for line in q:
+            try:
+                entry = json.loads(line)
+                
+                # Colorize level
+                lvl = entry.get('level', 'INFO')
+                lvl_style = "green"
+                if lvl == "WARNING": lvl_style = "yellow"
+                elif lvl == "ERROR": lvl_style = "red"
+                elif lvl == "CRITICAL": lvl_style = "bold red"
+                
+                table.add_row(
+                    entry.get('timestamp', '')[11:19], # HH:MM:SS
+                    f"[{lvl_style}]{lvl}[/{lvl_style}]",
+                    entry.get('message', '')
+                )
+            except json.JSONDecodeError:
+                continue
+                
+        console.print(table)
+        input("\nPress Enter to return...")
+        
+    except Exception as e:
+        console.print(f"[red]Error reading logs: {e}[/red]")
+
 def main():
     console.clear()
     banner = r"""
@@ -253,9 +299,11 @@ def main():
         console.print("1. List Devices")
         console.print("2. Block a Device")
         console.print("3. Unblock a Device")
+        console.print("3. Unblock a Device")
         console.print("4. Exit (Restores all devices)")
+        console.print("5. View Logs")
         
-        choice = Prompt.ask("Select an option", choices=["1", "2", "3", "4"], show_default=False)
+        choice = Prompt.ask("Select an option", choices=["1", "2", "3", "4", "5"], show_default=False)
         
         if choice == "1":
             list_devices()
@@ -308,6 +356,9 @@ def main():
                 pass
             restore_all()
             break
+            
+        elif choice == "5":
+            view_logs(30)
             
 if __name__ == "__main__":
     if sys.platform == 'linux':
