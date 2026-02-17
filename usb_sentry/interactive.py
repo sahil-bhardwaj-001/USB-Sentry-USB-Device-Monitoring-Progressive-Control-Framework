@@ -225,11 +225,27 @@ def main():
     console.print(banner)
     console.print("[dim]Use this terminal to block/unblock existing devices.[/dim]")
     
+    # PID File Handling
+    from .core.logger import log_file_path
+    pid_file = log_file_path.parent / "interactive.pid"
+    
+    try:
+        with open(pid_file, 'w') as f:
+            f.write(str(os.getpid()))
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not write PID file: {e}[/yellow]")
+
     # Handle cleanup
     def cleanup(sig, frame):
+        try:
+            if pid_file.exists():
+                pid_file.unlink()
+        except:
+            pass
         restore_all()
         sys.exit(0)
     signal.signal(signal.SIGINT, cleanup)
+    signal.signal(signal.SIGTERM, cleanup)
 
 
     while True:
@@ -285,6 +301,11 @@ def main():
                 pass
                 
         elif choice == "4":
+            try:
+                if pid_file.exists():
+                    pid_file.unlink()
+            except:
+                pass
             restore_all()
             break
             

@@ -11,6 +11,7 @@ try:
     import pythoncom
 except ImportError:
     wmi = None
+    pythoncom = None
 
 class WindowsUSBMonitor(USBMonitor):
     def __init__(self, callback):
@@ -25,10 +26,21 @@ class WindowsUSBMonitor(USBMonitor):
         self._thread.start()
         logger.info("Windows USB Monitor started.")
 
+    def stop(self):
+        super().stop()
+
+
     def _monitor_loop(self):
+        if wmi is None or pythoncom is None:
+            return
+
         # Initial scan
-        pythoncom.CoInitialize()
-        w = wmi.WMI()
+        try:
+            pythoncom.CoInitialize()
+            w = wmi.WMI()
+        except Exception as e:
+            logger.error(f"Failed to initialize Windows WMI: {e}")
+            return
         
         while self.running:
             try:

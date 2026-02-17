@@ -3,6 +3,7 @@ import sys
 import time
 import signal
 import os
+import shutil
 import stat
 import subprocess
 from rich.console import Console
@@ -269,11 +270,35 @@ def start(
     
     monitor = PlatformMonitor(callback=handle_usb_event)
     
+    interactive_process = None
+
     # Handle Ctrl+C gracefully
     def signal_handler(sig, frame):
         console.print("\n[bold red]Stopping service...[/bold red]")
         monitor.stop()
         file_auditor.stop_all()
+        
+        # Kill interactive CLI if running (PID file method)
+        pid_file = log_file_path.parent / "interactive.pid"
+        if pid_file.exists():
+            try:
+                with open(pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+                os.kill(pid, signal.SIGTERM)
+                monitor.stop() # Ensure monitor stops first
+            except Exception:
+                pass
+            # Cleanup file
+            try: pid_file.unlink() 
+            except: pass
+
+        # Fallback to process handle
+        if interactive_process:
+            try:
+                interactive_process.terminate()
+            except Exception:
+                pass
+                
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -293,14 +318,15 @@ def start(
                 # Syntax: start "Title" cmd /k "command..."
                 # We need to be careful with inner quotes.
                 full_cmd = f'start "USB Sentry Interactive" cmd /k "{cli_cmd}"'
-                subprocess.Popen(full_cmd, shell=True)
+                proc = subprocess.Popen(full_cmd, shell=True)
                 console.print("[green]Launched Interactive CLI (New Window).[/green]")
+                return proc
             except Exception as e:
                 console.print(f"[yellow]Could not launch interactive CLI automatically: {e}[/yellow]")
-            return
+            return None
 
         if sys.platform != "linux":
-            return
+            return None
 
         # Ensure we use the same python interpreter (venv) for the subprocess
         # QUOTING FIX: Handle spaces in path (e.g. "UNI Pro 3")
@@ -311,32 +337,87 @@ def start(
         console.print(f"[dim]If the window does not appear, run this command in a new terminal:[/dim]")
         console.print(f"[bold]{cli_cmd}[/bold]\n")
         
-        # Try 1: Gnome Terminal with dbus-launch (Fixes sudo issue)
-        try:
-             # We execute bash -c so we can keep the window open or handle errors inside
-            subprocess.Popen([
-                "dbus-launch", "gnome-terminal", "--geometry=130x40", "--", "bash", "-c", f"{cli_cmd}; exec bash"
-            ], start_new_session=True)
-            console.print("[green]Launched Interactive CLI (Gnome Terminal).[/green]")
-        except (FileNotFoundError, OSError):
-             # Try 2: xterm (Reliable fallback)
+        # Try to find a suitable terminal emulator
+        terminals = []
+        
+        # 1. Check system default (Debian/Kali standard)
+        if shutil.which("x-terminal-emulator"):
+            terminals.append("x-terminal-emulator")
+            
+        # 2. Check environment variable
+        env_term = os.environ.get("TERMINAL")
+        if env_term and shutil.which(env_term):
+            terminals.append(env_term)
+            
+        # 3. Common terminals
+        common_terms = ["gnome-terminal", "konsole", "xfce4-terminal", "qterminal", "terminator", "xterm"]
+        for t in common_terms:
+            if shutil.which(t):
+                terminals.append(t)
+        
+        # Deduplicate preserving order
+        terminals = list(dict.fromkeys(terminals))
+        
+        if not terminals:
+             console.print(f"[red]No suitable terminal emulator found. Please run the command manually.[/red]")
+             return None
+
+        terminal_launched = False
+        proc = None
+        for term in terminals:
             try:
-                subprocess.Popen([
-                    "xterm", "-geometry", "130x40", "-e", cli_cmd
-                ], start_new_session=True)
-                console.print("[green]Launched Interactive CLI (xterm).[/green]")
-            except (FileNotFoundError, OSError):
-                 # Try 3: Raw gnome-terminal (Last resort)
-                try:
-                    subprocess.Popen([
-                        "gnome-terminal", "--geometry=130x40", "--", "bash", "-c", f"{cli_cmd}; exec bash"
+                # cmd to run: bash -c "sudo python -m usb_sentry.interactive; exec bash"
+                # constructing the command
+                
+                # GNOME Terminal specific
+                if "gnome-terminal" in term:
+                    proc = subprocess.Popen([
+                        term, "--geometry=130x40", "--", "bash", "-c", f"{cli_cmd}"
                     ], start_new_session=True)
-                    console.print("[green]Launched Interactive CLI (fallback).[/green]")
-                except Exception as e:
-                    console.print(f"[yellow]Could not launch interactive CLI automatically: {e}[/yellow]")
+                
+                # Konsole specific
+                elif "konsole" in term:
+                     proc = subprocess.Popen([
+                        term, "-e", "bash", "-c", f"{cli_cmd}"
+                    ], start_new_session=True)
+
+                # XFCE4 Terminal specific
+                elif "xfce4-terminal" in term:
+                     proc = subprocess.Popen([
+                        term, "--geometry=130x40", "-e", f"bash -c '{cli_cmd}'"
+                    ], start_new_session=True)
+
+                # QTerminal specific
+                elif "qterminal" in term:
+                     proc = subprocess.Popen([
+                        term, "-e", f"bash -c '{cli_cmd}'"
+                    ], start_new_session=True)
+
+                # Terminator
+                elif "terminator" in term:
+                     proc = subprocess.Popen([
+                        term, "-x", f"bash -c '{cli_cmd}'"
+                    ], start_new_session=True)
+
+                # Standard xterm / x-terminal-emulator (usually supports -e)
+                else:
+                    proc = subprocess.Popen([
+                        term, "-geometry", "130x40", "-e", f"bash -c '{cli_cmd}'"
+                    ], start_new_session=True)
+                
+                console.print(f"[green]Launched Interactive CLI ({term}).[/green]")
+                terminal_launched = True
+                return proc
+            except Exception as e:
+                console.print(f"[dim]Failed to launch {term}: {e}[/dim]")
+                continue
+        
+        if not terminal_launched:
+             console.print(f"[yellow]Could not launch any detected terminal. Please run manually.[/yellow]")
+        return None
 
     # Launch immediately on start
-    launch_interactive_cli()
+    interactive_process = launch_interactive_cli()
     
     # Background Thread for Maintenance (Idle Promotions)
     def maintenance_loop():
@@ -369,8 +450,39 @@ def start(
             cmd = input().strip().lower()
             if cmd in ('r', 'relaunch'):
                 console.print("[yellow]Relaunching Interactive CLI...[/yellow]")
-                launch_interactive_cli()
+                
+                # Cleanup existing
+                pid_file = log_file_path.parent / "interactive.pid"
+                if pid_file.exists():
+                    try:
+                        with open(pid_file, 'r') as f:
+                            pid = int(f.read().strip())
+                        os.kill(pid, signal.SIGTERM)
+                    except: pass
+                    try: pid_file.unlink() 
+                    except: pass
+                
+                if interactive_process:
+                     try: interactive_process.terminate()
+                     except: pass
+                     
+                interactive_process = launch_interactive_cli()
             elif cmd in ('q', 'quit', 'exit'):
+                # Cleanup on exit
+                pid_file = log_file_path.parent / "interactive.pid"
+                if pid_file.exists():
+                    try:
+                        with open(pid_file, 'r') as f:
+                            pid = int(f.read().strip())
+                        os.kill(pid, signal.SIGTERM)
+                    except: pass
+                    try: pid_file.unlink() 
+                    except: pass
+                
+                if interactive_process:
+                     try: interactive_process.terminate()
+                     except: pass
+
                 raise KeyboardInterrupt
             
     except KeyboardInterrupt:
